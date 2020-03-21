@@ -1,6 +1,5 @@
 #!/usr/bin/env sh
 
-VERBOSE=0
 SCRIPT="$(basename $0)"
 
 RED='\033[0;31m'
@@ -11,35 +10,52 @@ INFO="${GREEN}INFO:${NC}"
 WARN="${YELLOW}WARN:${NC}"
 FATAL="${RED}FATAL:${NC}"
 
-PROFILE_FILE="$HOME/.config/ssm-ssh"
+PROFILE_FILE="$HOME/.config/ssm-ssh/config.properties"
 
-AWS_CMD="$(which aws)"
+print() {
+    echo $* >&2
+}
 
-if [ -z "${AWS_CMD}" ]; then
-	echo "The AWS CLI is not installed. Try running \`brew install aws-cli\`"
-	exit 1
-fi
+info() {
+	echo ${INFO} $* >&2
+}
 
-log() {
-	echo $* >&3
+warn() {
+	echo ${WARN} $* >&2
+}
+
+fatal() {
+	echo ${FATAL} $* >&2
+}
+
+v_info() {
+	echo ${INFO} $* >&3
+}
+
+v_warn() {
+	echo ${WARN} $* >&3
+}
+
+v_fatal() {
+	echo ${FATAL} $* >&3
 }
 
 usage() {
-	echo "Print usage here"
-	echo "Then exit with $1"
+	log "Print usage here"
+	log "Then exit with $1"
 	exit $1
 }
 
 get_aws_default_profile() {
 	if [ $# -ne 1 ]; then
-		echo "get_aws_default_profile takes 1 argument"
+		fatal "get_aws_default_profile takes 1 argument"
 		exit 1
 	fi
 	if [ -f "${PROFILE_FILE}" ] && grep -q -E -e '^aws_profile=.+'; then
 		awk -F= '/^aws_profile/ { print $2 }' | tail -n1
 	else
-		echo "No default AWS profile is set for $0"
-		read -p "Enter a profile: " PROFILE
+		log "No default AWS profile is set for $0"
+		read -p "Enter a profile: " PROFILE >&2
 		set_aws_profile ${PROFILE}
 		echo ${PROFILE}
 	fi
@@ -47,26 +63,78 @@ get_aws_default_profile() {
 
 set_aws_profile() {
 	if [ $# -ne 1 ]; then
-		echo "set_aws_profile takes 1 argument"
+		fatal "set_aws_profile takes 1 argument"
 		exit 1
 	fi
 	if [ -f "${PROFILE_FILE}" ]; then :; else
 		mkdir -p "$(dirname "${PROFILE_FILE}")"
-		echo "aws_profile=$1" | tee "${PROFILE}"
+		echo "aws_profile=$1" | tee "${PROFILE}" >/dev/null
+        info "AWS profile set to '$(get_aws_default_profile)'"
 	fi
 }
 
 is_private_ip() {
 	if [ $# -ne 1 ]; then
-		echo "is_private_ip takes 1 argument"
+		fatal "is_private_ip takes 1 argument"
 		exit 1
 	fi
 	echo $1 | grep -q -E -e '^(192\.168|10\.|172\.1[6789]\.|172\.2[0-9]\.|172\.3[01]\.)'
 }
 
 ip_to_instance_id() {
-	AWS_CMD=$(which aws)
+	if [ $# -ne 1 ]; then
+		fatal "ip_to_instance_id takes 1 argument"
+		exit 1
+	fi
+    {
+        if is_private_ip "$1"; then
+            ${AWS_CMD} ec2 describe-instances --filter "Name=private-ip-address,Values='$1'"
+        else
+            ${AWS_CMD} ec2 describe-instances --filter "Name=ip-address,Values='$1'"
+        fi
+    } | jq .Reservations.Instances[0].InstanceId
 }
+
+set_aws_cmd() {
+    AWS_CMD="$(which aws)"
+    if [ -z "${AWS_CMD}" ]; then
+        fatal "The AWS CLI is not installed. Try running \`brew install awscli\`."
+        exit 1
+    fi
+
+    if [ -z "${PROFILE}" ]; then
+        PROFILE=$(get_aws_default_profile)
+    fi
+
+    if [ "${PROFILE_TYPE}" == "OKTA" ]; then
+        if [ ! -f "${HOME}/.okta/okta-aws-cli.jar" ]; then
+            fatal "Could not locate ~/.okta/okta-aws-cli.jar."
+            fatal "Please make sure the Okta AWS CLI is installed."
+            exit 1
+        fi
+        JAVA_CMD="$(which java)"
+        if [ -z "${JAVA_CMD}" ]; then
+            fatal "Java is not installed. Try installing Java 8."
+            exit 1
+        fi
+        AWS_CMD="env OKTA_PROFILE=${PROFILE} ${JAVA_CMD} -classpath ${HOME}/.okta/okta-aws-cli.jar com.okta.tools.WithOkta aws --profile ${PROFILE}"
+    elif [ "${PROFILE_TYPE}" == "GOOGLE" ]; then
+        true
+    fi
+}
+
+run_aws_cmd() {
+    if [ -z "${AWS_CMD}" ]; then
+        set_aws_cmd
+    fi
+    v_info Executing ${AWS_CMD} $*
+    echo ${AWS_CMD} $* | sh
+}
+
+exec 3>/dev/null
+
+PROFILE_TYPE=
+PROFILE=
 
 while [ "x$1" != "x" ]; do
     option=$1
@@ -84,29 +152,44 @@ while [ "x$1" != "x" ]; do
 		usage 0
 		;;
 	--verbose | -v)
-		VERBOSE=1
+        exec 3>&2
 		;;
-	--set-default-profile | -S)
+	--set-default-profile=*)
 		set_aws_profile "${optarg}"
 		exit 0
 		;;
+	--set-default-profile | -S)
+		set_aws_profile "$1"
+        shift
+        args="${args} \"${option}\""
+		exit 0
+		;;
+    --use-okta=*)
+        PROFILE_TYPE="OKTA"
+		PROFILE="${optarg}"
+		;;
+    --use-okta | -O)
+        PROFILE_TYPE="OKTA"
+        PROFILE="$1"
+        shift
+        args="${args} \"${option}\""
+        ;;
+    --use-google=*)
+        PROFILE_TYPE="GOOGLE"
+		PROFILE="${optarg}"
+		;;
+    --use-google | -G)
+        PROFILE_TYPE="GOOGLE"
+        PROFILE="$1"
+        shift
+        args="${args} \"${option}\""
+        ;;
 	--)
 		break
 		;;
     esac
+    v_info Parsed option ${option}
 done
 
 
-if [ "${VERBOSE}" == "1" ]; then
-	exec 3>&2
-	log "${INFO} Verbose mode enabled"
-else
-	exec 3>/dev/null
-	log "${WARN} This should go to /dev/null. If you see this there is a bug in ${SCRIPT}" 
-fi
-
-if is_private_ip "192.168.0.2"; then
-	echo private
-else
-	echo public
-fi
+run_aws_cmd sts get-caller-identity
