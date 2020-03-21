@@ -17,75 +17,75 @@ print() {
 }
 
 info() {
-	echo ${INFO} $* >&2
+    echo ${INFO} $* >&2
 }
 
 warn() {
-	echo ${WARN} $* >&2
+    echo ${WARN} $* >&2
 }
 
 fatal() {
-	echo ${FATAL} $* >&2
+    echo ${FATAL} $* >&2
 }
 
 v_info() {
-	echo ${INFO} $* >&3
+    echo ${INFO} $* >&3
 }
 
 v_warn() {
-	echo ${WARN} $* >&3
+    echo ${WARN} $* >&3
 }
 
 v_fatal() {
-	echo ${FATAL} $* >&3
+    echo ${FATAL} $* >&3
 }
 
 usage() {
-	log "Print usage here"
-	log "Then exit with $1"
-	exit $1
+    log "Print usage here"
+    log "Then exit with $1"
+    exit $1
 }
 
 get_aws_default_profile() {
-	if [ $# -ne 1 ]; then
-		fatal "get_aws_default_profile takes 1 argument"
-		exit 1
-	fi
-	if [ -f "${PROFILE_FILE}" ] && grep -q -E -e '^aws_profile=.+'; then
-		awk -F= '/^aws_profile/ { print $2 }' | tail -n1
-	else
-		log "No default AWS profile is set for $0"
-		read -p "Enter a profile: " PROFILE >&2
-		set_aws_profile ${PROFILE}
-		echo ${PROFILE}
-	fi
+    if [ $# -ne 1 ]; then
+        fatal "get_aws_default_profile takes 1 argument"
+        exit 1
+    fi
+    if [ -f "${PROFILE_FILE}" ] && grep -q -E -e '^aws_profile=.+'; then
+        awk -F= '/^aws_profile/ { print $2 }' | tail -n1
+    else
+        log "No default AWS profile is set for $0"
+        read -p "Enter a profile: " PROFILE >&2
+        set_aws_profile ${PROFILE}
+        echo ${PROFILE}
+    fi
 }
 
 set_aws_profile() {
-	if [ $# -ne 1 ]; then
-		fatal "set_aws_profile takes 1 argument"
-		exit 1
-	fi
-	if [ -f "${PROFILE_FILE}" ]; then :; else
-		mkdir -p "$(dirname "${PROFILE_FILE}")"
-		echo "aws_profile=$1" | tee "${PROFILE}" >/dev/null
+    if [ $# -ne 1 ]; then
+        fatal "set_aws_profile takes 1 argument"
+        exit 1
+    fi
+    if [ -f "${PROFILE_FILE}" ]; then :; else
+        mkdir -p "$(dirname "${PROFILE_FILE}")"
+        echo "aws_profile=$1" | tee "${PROFILE}" >/dev/null
         info "AWS profile set to '$(get_aws_default_profile)'"
-	fi
+    fi
 }
 
 is_private_ip() {
-	if [ $# -ne 1 ]; then
-		fatal "is_private_ip takes 1 argument"
-		exit 1
-	fi
-	echo $1 | grep -q -E -e '^(192\.168|10\.|172\.1[6789]\.|172\.2[0-9]\.|172\.3[01]\.)'
+    if [ $# -ne 1 ]; then
+        fatal "is_private_ip takes 1 argument"
+        exit 1
+    fi
+    echo $1 | grep -q -E -e '^(192\.168|10\.|172\.1[6789]\.|172\.2[0-9]\.|172\.3[01]\.)'
 }
 
 ip_to_instance_id() {
-	if [ $# -ne 1 ]; then
-		fatal "ip_to_instance_id takes 1 argument"
-		exit 1
-	fi
+    if [ $# -ne 1 ]; then
+        fatal "ip_to_instance_id takes 1 argument"
+        exit 1
+    fi
     {
         if is_private_ip "$1"; then
             ${AWS_CMD} ec2 describe-instances --filter "Name=private-ip-address,Values='$1'"
@@ -148,45 +148,45 @@ while [ "x$1" != "x" ]; do
     esac
 
     case ${option} in 
-	--help | -h)
-		usage 0
-		;;
-	--verbose | -v)
-        exec 3>&2
-		;;
-	--set-default-profile=*)
-		set_aws_profile "${optarg}"
-		exit 0
-		;;
-	--set-default-profile | -S)
-		set_aws_profile "$1"
-        shift
-        args="${args} \"${option}\""
-		exit 0
-		;;
-    --use-okta=*)
-        PROFILE_TYPE="OKTA"
-		PROFILE="${optarg}"
-		;;
-    --use-okta | -O)
-        PROFILE_TYPE="OKTA"
-        PROFILE="$1"
-        shift
-        args="${args} \"${option}\""
-        ;;
-    --use-google=*)
-        PROFILE_TYPE="GOOGLE"
-		PROFILE="${optarg}"
-		;;
-    --use-google | -G)
-        PROFILE_TYPE="GOOGLE"
-        PROFILE="$1"
-        shift
-        args="${args} \"${option}\""
-        ;;
-	--)
-		break
-		;;
+        --help | -h)
+            usage 0
+            ;;
+        --verbose | -v)
+            exec 3>&2
+            ;;
+        --set-default-profile=*)
+            set_aws_profile "${optarg}"
+            exit 0
+            ;;
+        --set-default-profile | -S)
+            set_aws_profile "$1"
+            shift
+            args="${args} \"${option}\""
+            exit 0
+            ;;
+        --use-okta=*)
+            PROFILE_TYPE="OKTA"
+            PROFILE="${optarg}"
+            ;;
+        --use-okta | -O)
+            PROFILE_TYPE="OKTA"
+            PROFILE="$1"
+            shift
+            args="${args} \"${option}\""
+            ;;
+        --use-google=*)
+            PROFILE_TYPE="GOOGLE"
+            PROFILE="${optarg}"
+            ;;
+        --use-google | -G)
+            PROFILE_TYPE="GOOGLE"
+            PROFILE="$1"
+            shift
+            args="${args} \"${option}\""
+            ;;
+        --)
+            break
+            ;;
     esac
     v_info Parsed option ${option}
 done
