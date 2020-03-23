@@ -12,6 +12,7 @@ CMD_ENOENT="command @@ not found"
 : "${ECHO="$(which echo)"}"         && : "${ECHO:?${CMD_ENOENT//@@/echo}}"
 : "${JAVA="$(which java)"}"         && : "${JAVA:?${CMD_ENOENT//@@/java}}"
 : "${MKDIR="$(which mkdir)"}"       && : "${MKDIR:?${CMD_ENOENT//@@/mkdir}}"
+: "${PYTHON3="$(which python3)"}"   && : "${PYTHON3:?${CMD_ENOENT//@@/python3}}"
 : "${TOUCH="$(which touch)"}"       && : "${TOUCH:?${CMD_ENOENT//@@/touch}}"
 : "${TPUT="$(which tput)"}"         && : "${TPUT:?${CMD_ENOENT//@@/tput}}"
 
@@ -59,10 +60,9 @@ v_fatal() {
 
 usage() {
     ${CAT} <<EOF >&${2:-2}
-Usage:
-    ${SCRIPT} [OPTIONS] ip-address
-    ${SCRIPT} [OPTIONS] ec2-instance-id
-    ${SCRIPT} [OPTIONS] [-C | --cluster] cluster-name ecs-container-instance
+Usage:  ${SCRIPT} [OPTIONS] ip-address
+  or:   ${SCRIPT} [OPTIONS] ec2-instance-id
+  or:   ${SCRIPT} [OPTIONS] [-C | --cluster] cluster-name ecs-container-instance
 
 Options:
     -h, --help
@@ -79,8 +79,19 @@ Options:
         Enables verbose logging to standard error
     -V, --version
         Prints the version number then exits
+
+Report bugs via https://github.com/jwfh/ssm-ssh/issues.
 EOF
     exit $1
+}
+
+version() {
+    ${CAT} <<EOF >&${1:-2}
+${SCRIPT} ${VERSION}
+
+Written by Jacob House
+EOF
+    exit 0
 }
 
 get_aws_default_profile() {
@@ -192,17 +203,20 @@ while [ "x$1" != "x" ]; do
     args="${args} \"${option}\""
     
     case ${option} in 
-        *=*)
+        --*=*)
+            optarg=`echo ${option} | sed -e 's,^[^=]*=,,'`
+            ;;
+        -?*)
             optarg=`echo ${option} | sed -e 's,^[^=]*=,,'`
             ;;
     esac
 
     case ${option} in 
         --help | -h)
-            usage 0
+            usage 0 1
             ;;
         --version | -V)
-            print "${SCRIPT} version ${VERSION}"
+            version 1
             ;;
         --verbose | -v)
             exec 3>&2

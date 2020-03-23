@@ -1,14 +1,17 @@
 PREFIX?=	/usr/local
 BIN_DEST=	${PREFIX}/bin
-MAN_DEST=	${PREFIX}/man
+MAN_DEST=	${PREFIX}/share/man
 SCRIPTS=	ssm-ssh
 
-install: ${SCRIPTS} ${SCRIPTS:=.1}
+install: ${SCRIPTS} ${SCRIPTS:=.1.gz}
+	install -m 555 ${SCRIPTS} ${BIN_DEST}
+	install -m 444 ${SCRIPTS:=.1.gz} ${MAN_DEST}/man1
 
-${SCRIPTS}: $@
-	install -m 555 $@ ${BIN_DEST}
+%.1: %
+	help2man -N -o $@ $<
 
-${SCRIPTS:=.1}: $@
-	install -m 444 $@ ${MAN_DEST}/1
+%.gz: %
+	gzip -c $< > $@
 
-.PHONY: ${SCRIPTS}
+clean:
+	rm -f ${SCRIPTS:=.1.gz}
