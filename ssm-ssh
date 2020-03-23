@@ -1,51 +1,64 @@
 #!/usr/bin/env sh
 
-SCRIPT="$(basename $0)"
-TOUCH="$(which touch)"
-CAT="$(which cat)"
+VERSION="0.1.0"
 
-RED='\033[0;31m'
-YELLOW='\033[1;33m'
-GREEN='\033[0;32m'
-NC='\033[0m'
+#
+# Allows binary-specific path overrides
+#
+CMD_ENOENT="command @@ not found"
+: "${AWS="$(which aws)"}"           && : "${AWS:?${CMD_ENOENT//@@/aws}}"
+: "${BASENAME="$(which basename)"}" && : "${BASENAME:?${CMD_ENOENT//@@/basename}}"
+: "${CAT="$(which cat)"}"           && : "${CAT:?${CMD_ENOENT//@@/cat}}"
+: "${ECHO="$(which echo)"}"         && : "${ECHO:?${CMD_ENOENT//@@/echo}}"
+: "${JAVA="$(which java)"}"         && : "${JAVA:?${CMD_ENOENT//@@/java}}"
+: "${MKDIR="$(which mkdir)"}"       && : "${MKDIR:?${CMD_ENOENT//@@/mkdir}}"
+: "${TOUCH="$(which touch)"}"       && : "${TOUCH:?${CMD_ENOENT//@@/touch}}"
+: "${TPUT="$(which tput)"}"         && : "${TPUT:?${CMD_ENOENT//@@/tput}}"
+
+: "${SCRIPT:="$(${BASENAME} $0)"}"
+: "${PROFILE_FILE:="${HOME}/.config/ssm-ssh/config.properties"}"
+
+RED="$(${TPUT} setaf 1)"
+GREEN="$(${TPUT} setaf 2)"
+YELLOW="$(${TPUT} setaf 3)"
+NC="$(${TPUT} sgr0)"
+
 INFO="${GREEN}INFO:${NC}"
 WARN="${YELLOW}WARN:${NC}"
 FATAL="${RED}FATAL:${NC}"
 
-PROFILE_FILE="$HOME/.config/ssm-ssh/config.properties"
-
 print() {
-    echo $* >&2
+    ${ECHO} $* >&2
 }
 
 info() {
-    echo ${INFO} $* >&2
+    ${ECHO} ${INFO} $* >&2
 }
 
 warn() {
-    echo ${WARN} $* >&2
+    ${ECHO} ${WARN} $* >&2
 }
 
 fatal() {
-    echo ${FATAL} $* >&2
+    ${ECHO} ${FATAL} $* >&2
     exit 1
 }
 
 v_info() {
-    echo ${INFO} $* >&3
+    ${ECHO} ${INFO} $* >&3
 }
 
 v_warn() {
-    echo ${WARN} $* >&3
+    ${ECHO} ${WARN} $* >&3
 }
 
 v_fatal() {
-    echo ${FATAL} $* >&3
+    ${ECHO} ${FATAL} $* >&3
     exit 1
 }
 
 usage() {
-    ${CAT} <<EOF >&2
+    ${CAT} <<EOF >&${2:-2}
 Usage:
     ${SCRIPT} [OPTIONS] ip-address
     ${SCRIPT} [OPTIONS] ec2-instance-id
@@ -62,6 +75,10 @@ Options:
         Use Google for SSO (SAML) authentication with PROFILE
     -C CLUSTER, --cluster CLUSTER
         Required when the instance address is an ECS container instance
+    -v, --verbose
+        Enables verbose logging to standard error
+    -V, --version
+        Prints the version number then exits
 EOF
     exit $1
 }
@@ -129,11 +146,6 @@ ecs_container_instance_to_instance_id() {
 }
 
 set_aws_cmd() {
-    AWS_CMD="$(which aws)"
-    if [ -z "${AWS_CMD}" ]; then
-        fatal "The AWS CLI is not installed. Try running \`brew install awscli\`."
-    fi
-
     if [ -z "${PROFILE}" ]; then
         PROFILE=$(get_aws_default_profile)
     fi
@@ -147,13 +159,15 @@ set_aws_cmd() {
         else
             JAVA_CMD="$(which java)"
         fi
-        AWS_CMD="env OKTA_PROFILE=${PROFILE} ${JAVA_CMD} -classpath ${HOME}/.okta/okta-aws-cli.jar com.okta.tools.WithOkta ${AWS_CMD} --profile ${PROFILE}"
+        AWS_CMD="env OKTA_PROFILE=${PROFILE} ${JAVA_CMD} -classpath ${HOME}/.okta/okta-aws-cli.jar com.okta.tools.WithOkta ${AWS} --profile ${PROFILE}"
     elif [ "${PROFILE_TYPE}" == "GOOGLE" ]; then
         if ! aws-google-auth --version; then
             true
         else
             GOOGLE_AUTH="$(which aws-google-auth)"
         fi
+    else
+        AWS_CMD="${AWS}"
     fi
 }
 
@@ -164,6 +178,8 @@ run_aws_cmd() {
     v_info Executing \'${AWS_CMD} $*\'
     echo ${AWS_CMD} $* | sh
 }
+
+: "${1?"${SCRIPT} requires at least 1 argument; see ${SCRIPT}(1)"}"
 
 exec 3>/dev/null
 
@@ -184,6 +200,9 @@ while [ "x$1" != "x" ]; do
     case ${option} in 
         --help | -h)
             usage 0
+            ;;
+        --version | -V)
+            print "${SCRIPT} version ${VERSION}"
             ;;
         --verbose | -v)
             exec 3>&2
