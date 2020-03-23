@@ -1,6 +1,8 @@
 #!/usr/bin/env sh
 
 SCRIPT="$(basename $0)"
+TOUCH="$(which touch)"
+CAT="$(which cat)"
 
 RED='\033[0;31m'
 YELLOW='\033[1;33m'
@@ -26,6 +28,7 @@ warn() {
 
 fatal() {
     echo ${FATAL} $* >&2
+    exit 1
 }
 
 v_info() {
@@ -38,45 +41,67 @@ v_warn() {
 
 v_fatal() {
     echo ${FATAL} $* >&3
+    exit 1
 }
 
 usage() {
-    log "Print usage here"
-    log "Then exit with $1"
+    ${CAT} <<EOF >&2
+Usage:
+    ${SCRIPT} [OPTIONS] ip-address
+    ${SCRIPT} [OPTIONS] ec2-instance-id
+    ${SCRIPT} [OPTIONS] [-C | --cluster] cluster-name ecs-container-instance
+
+Options:
+    -h, --help
+        Prints this help message and exits
+    -S PROFILE, --set-default-profile PROFILE
+        Sets the default profile for ${SCRIPT} to PROFILE
+    -O PROFILE, --use-okta PROFILE
+        Use Okta for SSO (SAML) authentication with PROFILE
+    -G PROFILE, --use-google PROFILE
+        Use Google for SSO (SAML) authentication with PROFILE
+    -C CLUSTER, --cluster CLUSTER
+        Required when the instance address is an ECS container instance
+EOF
     exit $1
 }
 
 get_aws_default_profile() {
     if [ $# -ne 1 ]; then
         fatal "get_aws_default_profile takes 1 argument"
-        exit 1
     fi
-    if [ -f "${PROFILE_FILE}" ] && grep -q -E -e '^aws_profile=.+'; then
+    if [ -f "${PROFILE_FILE}" ] && grep -q -E -e '^aws_profile=.+' "${PROFILE_FILE}"; then
         awk -F= '/^aws_profile/ { print $2 }' | tail -n1
     else
         log "No default AWS profile is set for $0"
         read -p "Enter a profile: " PROFILE >&2
         set_aws_profile ${PROFILE}
-        echo ${PROFILE}
     fi
 }
 
 set_aws_profile() {
     if [ $# -ne 1 ]; then
         fatal "set_aws_profile takes 1 argument"
-        exit 1
     fi
-    if [ -f "${PROFILE_FILE}" ]; then :; else
+    if [ ! -f "${PROFILE_FILE}" ]; then
         mkdir -p "$(dirname "${PROFILE_FILE}")"
-        echo "aws_profile=$1" | tee "${PROFILE}" >/dev/null
-        info "AWS profile set to '$(get_aws_default_profile)'"
+        touch "${PROFILE}"
     fi
+    if grep -q -E -e '^aws_profile=.+' "${PROFILE_FILE}"; then
+        ex -s "${PROFILE_FILE}" <<EDIT
+/^aws_profile=..*/ s/^\(aws_profile=\).*\$/\1$1/
+w
+q
+EDIT
+    else
+        echo "aws_profile=$1" | tee "${PROFILE}" >/dev/null
+    fi
+    info "AWS profile set to '$(get_aws_default_profile)'"
 }
 
 is_private_ip() {
     if [ $# -ne 1 ]; then
         fatal "is_private_ip takes 1 argument"
-        exit 1
     fi
     echo $1 | grep -q -E -e '^(192\.168|10\.|172\.1[6789]\.|172\.2[0-9]\.|172\.3[01]\.)'
 }
@@ -84,7 +109,6 @@ is_private_ip() {
 ip_to_instance_id() {
     if [ $# -ne 1 ]; then
         fatal "ip_to_instance_id takes 1 argument"
-        exit 1
     fi
     {
         if is_private_ip "$1"; then
@@ -95,11 +119,19 @@ ip_to_instance_id() {
     } | jq .Reservations.Instances[0].InstanceId
 }
 
+ecs_container_instance_to_instance_id() {
+    if [ $# -ne 2 ]; then
+        fatal "ecs_container_instance_to_instance_id takes 1 argument"
+    fi
+    {
+        ${AWS_CMD} ecs decribe-container-instances --cluster $1 --container-instances $2
+    } | jq .containerInstances[0].ec2InstanceId
+}
+
 set_aws_cmd() {
     AWS_CMD="$(which aws)"
     if [ -z "${AWS_CMD}" ]; then
         fatal "The AWS CLI is not installed. Try running \`brew install awscli\`."
-        exit 1
     fi
 
     if [ -z "${PROFILE}" ]; then
@@ -108,18 +140,20 @@ set_aws_cmd() {
 
     if [ "${PROFILE_TYPE}" == "OKTA" ]; then
         if [ ! -f "${HOME}/.okta/okta-aws-cli.jar" ]; then
-            fatal "Could not locate ~/.okta/okta-aws-cli.jar."
-            fatal "Please make sure the Okta AWS CLI is installed."
-            exit 1
+            fatal "Could not locate ~/.okta/okta-aws-cli.jar. Please make sure the Okta AWS CLI is installed."
         fi
-        JAVA_CMD="$(which java)"
-        if [ -z "${JAVA_CMD}" ]; then
+        if ! java -version &>/dev/null; then
             fatal "Java is not installed. Try installing Java 8."
-            exit 1
+        else
+            JAVA_CMD="$(which java)"
         fi
-        AWS_CMD="env OKTA_PROFILE=${PROFILE} ${JAVA_CMD} -classpath ${HOME}/.okta/okta-aws-cli.jar com.okta.tools.WithOkta aws --profile ${PROFILE}"
+        AWS_CMD="env OKTA_PROFILE=${PROFILE} ${JAVA_CMD} -classpath ${HOME}/.okta/okta-aws-cli.jar com.okta.tools.WithOkta ${AWS_CMD} --profile ${PROFILE}"
     elif [ "${PROFILE_TYPE}" == "GOOGLE" ]; then
-        true
+        if ! aws-google-auth --version; then
+            true
+        else
+            GOOGLE_AUTH="$(which aws-google-auth)"
+        fi
     fi
 }
 
@@ -127,7 +161,7 @@ run_aws_cmd() {
     if [ -z "${AWS_CMD}" ]; then
         set_aws_cmd
     fi
-    v_info Executing ${AWS_CMD} $*
+    v_info Executing \'${AWS_CMD} $*\'
     echo ${AWS_CMD} $* | sh
 }
 
