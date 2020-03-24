@@ -10,11 +10,13 @@ CMD_ENOENT="command @@ not found"
 : "${BASENAME="$(which basename)"}" && : "${BASENAME:?${CMD_ENOENT//@@/basename}}"
 : "${CAT="$(which cat)"}"           && : "${CAT:?${CMD_ENOENT//@@/cat}}"
 : "${ECHO="$(which echo)"}"         && : "${ECHO:?${CMD_ENOENT//@@/echo}}"
-: "${JAVA="$(which java)"}"         && : "${JAVA:?${CMD_ENOENT//@@/java}}"
 : "${MKDIR="$(which mkdir)"}"       && : "${MKDIR:?${CMD_ENOENT//@@/mkdir}}"
-: "${PYTHON3="$(which python3)"}"   && : "${PYTHON3:?${CMD_ENOENT//@@/python3}}"
 : "${TOUCH="$(which touch)"}"       && : "${TOUCH:?${CMD_ENOENT//@@/touch}}"
 : "${TPUT="$(which tput)"}"         && : "${TPUT:?${CMD_ENOENT//@@/tput}}"
+
+: "${AWS_GOOGLE_AUTH="$(which aws-google-auth)"}"
+: "${JAVA="$(which java)"}"
+: "${PYTHON3="$(which python3 || (python -V | grep -Eqe '3\.[7-9]\.[0-9]+' && which python))"}"
 
 : "${SCRIPT:="$(${BASENAME} $0)"}"
 : "${PROFILE_FILE:="${HOME}/.config/ssm-ssh/config.properties"}"
@@ -79,6 +81,23 @@ Options:
         Enables verbose logging to standard error
     -V, --version
         Prints the version number then exits
+
+Examples:
+
+    $ ${SCRIPT} 10.1.2.3
+        Open a shell on the EC2 instance with private IPv4
+        address 10.1.2.3.
+
+    $ ${SCRIPT} i-1234567890abcdef0
+        Open a shell on EC2 instance i-1234567890abcdef0
+
+    $ ${SCRIPT} abcd7890-b12a-4321-abcd-a1b23c456789
+        Open a shell via an ECS container instance ID
+
+    $ ${SCRIPT} -O prod 10.1.2.3
+        Authenticate with Okta SAML (okta-aws) and then use the
+        assumed role to open a shell on the EC2 instance with
+        private IP address 10.1.2.3.
 
 Report bugs via https://github.com/jwfh/ssm-ssh/issues.
 EOF

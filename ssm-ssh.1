@@ -40,7 +40,29 @@ Enables verbose logging to standard error
 \fB\-V\fR, \fB\-\-version\fR
 .IP
 Prints the version number then exits
+.SH EXAMPLES
+.IP
+\f(CW$ ssm-ssh 10.1.2.3\fR
+.IP
+Open a shell on the EC2 instance with private IPv4
+address 10.1.2.3.
+.IP
+\f(CW$ ssm-ssh i-1234567890abcdef0\fR
+.IP
+Open a shell on EC2 instance i\-1234567890abcdef0
+.IP
+\f(CW$ ssm-ssh abcd7890-b12a-4321-abcd-a1b23c456789\fR
+.IP
+Open a shell via an ECS container instance ID
+.IP
+\f(CW$ ssm-ssh -O prod 10.1.2.3\fR
+.IP
+Authenticate with Okta SAML (okta\-aws) and then use the
+assumed role to open a shell on the EC2 instance with
+private IP address 10.1.2.3.
 .SH AUTHOR
 Written by Jacob House
 .SH "REPORTING BUGS"
 Report bugs via https://github.com/jwfh/ssm\-ssh/issues.
+.SH "SEE ALSO"
+aws(1), okta-aws(1), aws-google-auth(1)

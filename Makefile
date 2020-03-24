@@ -3,15 +3,15 @@ BIN_DEST=	${PREFIX}/bin
 MAN_DEST=	${PREFIX}/share/man
 SCRIPTS=	ssm-ssh
 
-install: ${SCRIPTS} ${SCRIPTS:=.1.gz}
+install: ${SCRIPTS} ${SCRIPTS:=.1} ${SCRIPTS:=.1.gz}
 	install -m 555 ${SCRIPTS} ${BIN_DEST}
 	install -m 444 ${SCRIPTS:=.1.gz} ${MAN_DEST}/man1
 
 %.1: %
-	help2man -N -o $@ $<
+	help2man -N -I $@.inc -o $@ $<
 
 %.gz: %
-	gzip -c $< > $@
+	gzip -cfq $< > $@
 
 clean:
-	rm -f ${SCRIPTS:=.1.gz}
+	rm -f ${SCRIPTS:=.1} ${SCRIPTS:=.1.gz}
